@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>수업용 모둠 퀴즈 & 점수판</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Font (Noto Sans KR) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <!-- Canvas Confetti Library for Sound/Celebration Effect -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            touch-action: manipulation;
+        }
+
+        /* 전자칠판용 가시성 강화 및 카드 스타일 */
+        .quiz-card {
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+        }
+
+        /* 점수 변경 시 번쩍이는 애니메이션 */
+        @keyframes scorePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); color: #f59e0b; }
+            100% { transform: scale(1); }
+        }
+        .animate-score {
+            animation: scorePulse 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between p-3 md:p-6 select-none">
+
+    <!-- ==========================================
+         [수정 가능한 설정 영역 / CONFIGURATION]
+         선생님께서 수업 단원에 맞게 문제를 수정하시고,
+         모둠 수 및 기본 점수를 설정하실 수 있습니다.
+         ========================================== -->
+    <script>
+        const CONFIG = {
+            TITLE_TEXT: "⚡ 단원 복습 퀴즈 & 모둠 점수판",
+            SUBTITLE_TEXT: "화이트보드 정답을 확인하고 모둠별 점수를 바로 가산하세요!",
+
+            // 점수 증가/감소 기본 단위 (예: 10점씩 또는 1점씩)
+            SCORE_STEP: 10,
+
+            // 모둠 이름 설정 (필요시 이름을 변경할 수 있습니다)
+            TEAMS: [
+                { id: 1, name: "1모둠" },
+                { id: 2, name: "2모둠" },
+                { id: 3, name: "3모둠" },
+                { id: 4, name: "4모둠" },
+                { id: 5, name: "5모둠" },
+                { id: 6, name: "6모둠" }
+            ],
+
+            // 퀴즈 문제 목록 (필요한 만큼 자유롭게 추가/수정 가능)
+            QUIZ_LIST: [
+                {
+                    num: 1,
+                    question: "식물이 빛에너지를 이용하여 이산화탄소와 물로부터 유기물과 산소를 합성하는 작용을 무엇이라고 할까요?",
+                    answer: "광합성"
+                },
+                {
+                    num: 2,
+                    question: "농도가 낮은 쪽에서 높은 쪽으로 반투과성 막을 통해 용매(물)가 이동하는 현상은?",
+                    answer: "삼투 현상"
+                },
+                {
+                    num: 3,
+                    question: "우리 몸에서 심장과 혈관을 통해 영양소와 산소를 온몸으로 운반하는 기관계의 이름은 무엇일까요?",
+                    answer: "순환계"
+                },
+                {
+                    num: 4,
+                    question: "체내 세포 호흡 결과 발생한 이산화탄소와 노폐물을 몸 밖으로 보내는 생명 활동 과정을 무엇이라고 하나요?",
+                    answer: "배설"
+                },
+                {
+                    num: 5,
+                    question: "혈액 성분 중 유해 미생물이나 이물질을 식균 작용으로 제거하여 면역 작용을 담당하는 혈구는?",
+                    answer: "백혈구"
+                }
+            ]
+        };
+    </script>
+
+    <!-- Header Section -->
+    <header class="text-center my-1 md:my-3">
+        <h1 id="app-title" class="text-2xl sm:text-3xl md:text-5xl font-black text-amber-400 tracking-tight mb-1">
+            <!-- 자바스크립트로 로드 -->
+        </h1>
+        <p id="app-subtitle" class="text-slate-400 text-sm sm:text-base md:text-xl font-medium">
+            <!-- 자바스크립트로 로드 -->
+        </p>
+    </header>
+
+    <!-- Main Section: 퀴즈 카드 표시 및 컨트롤 -->
+    <main class="flex-1 flex flex-col items-center justify-center my-2 sm:my-4 w-full max-w-5xl mx-auto">
+        
+        <!-- 퀴즈 번호 및 상태 뱃지 -->
+        <div class="w-full flex justify-between items-center px-2 sm:px-4 mb-2 md:mb-4 text-base sm:text-lg md:text-2xl font-bold">
+            <span class="text-amber-400 bg-slate-800 border border-slate-700 px-4 py-1.5 rounded-2xl shadow">
+                Question <span id="current-quiz-index" class="text-white">1</span> / <span id="total-quiz-count" class="text-white">0</span>
+            </span>
+            <button onclick="resetScores()" 
+                class="bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700 text-xs sm:text-sm md:text-base px-3 sm:py-1.5 py-1 rounded-xl transition">
+                🔄 점수 초기화
+            </button>
+        </div>
+
+        <!-- 초대형 퀴즈 디스플레이 카드 -->
+        <div class="quiz-card w-full bg-slate-800 border-4 border-slate-700 rounded-3xl p-5 sm:p-8 md:p-10 flex flex-col items-center justify-between min-h-[260px] sm:min-h-[320px] md:min-h-[380px] relative overflow-hidden transition-all">
+            
+            <!-- 문제 영역 -->
+            <div class="w-full flex-1 flex flex-col items-center justify-center my-2">
+                <span class="text-xs sm:text-sm md:text-base font-bold text-amber-400/90 bg-amber-950/60 border border-amber-500/40 px-3 py-1 rounded-full mb-3">
+                    [ 문제 ]
+                </span>
+                <div id="quiz-question" class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white text-center break-keep leading-snug md:leading-relaxed">
+                    <!-- 문제 채워짐 -->
+                </div>
+            </div>
+
+            <!-- 정답 확인 영역 (기본 숨김, 버튼 클릭 시 표시) -->
+            <div id="answer-box" class="w-full bg-emerald-950/80 border-2 border-emerald-500/60 rounded-2xl p-3 sm:p-5 my-3 text-center hidden transition-all transform scale-100">
+                <span class="text-xs sm:text-sm font-bold text-emerald-400 block mb-1">[ 💡 정답 ]</span>
+                <div id="quiz-answer" class="text-2xl sm:text-3xl md:text-5xl font-black text-emerald-300 break-keep">
+                    <!-- 정답 채워짐 -->
+                </div>
+            </div>
+
+            <!-- 정답 보기 / 다음 문제 컨트롤 버튼 -->
+            <div class="w-full grid grid-cols-3 gap-2 sm:gap-4 mt-3">
+                <button onclick="prevQuiz()" 
+                    class="bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-white font-bold text-base sm:text-xl md:text-2xl py-3 sm:py-4 px-2 rounded-2xl shadow transition active:scale-95 flex items-center justify-center gap-1">
+                    ◀ 이전
+                </button>
+                
+                <button id="btn-toggle-answer" onclick="toggleAnswer()" 
+                    class="bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-lg sm:text-2xl md:text-3xl py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition active:scale-95 border-b-4 border-amber-700 flex items-center justify-center gap-1 sm:gap-2">
+                    👁️ 정답 보기
+                </button>
+
+                <button onclick="nextQuiz()" 
+                    class="bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-white font-bold text-base sm:text-xl md:text-2xl py-3 sm:py-4 px-2 rounded-2xl shadow transition active:scale-95 flex items-center justify-center gap-1">
+                    다음 ▶
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Section: 6개 모둠 점수판 (교실 뒤에서도 직관적인 터치 점수판) -->
+    <footer class="w-full max-w-6xl mx-auto mt-2 sm:mt-4">
+        <h2 class="text-base sm:text-lg md:text-xl font-bold text-slate-300 mb-2 px-2 flex items-center justify-between">
+            <span>🏆 모둠별 점수판</span>
+            <span class="text-xs sm:text-sm font-normal text-slate-400">버튼(+/-)을 눌러 점수를 조절하세요</span>
+        </h2>
+
+        <!-- 모둠 6개 그리드 -->
+        <div id="team-scoreboard" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+            <!-- 자바스크립트로 6개 모둠 생성 -->
+        </div>
+    </footer>
+
+    <!-- 자바스크립트 로직 -->
+    <script>
+        // 상태 관리 변수
+        let currentQuizIndex = 0;
+        let isAnswerVisible = false;
+        let teamScores = {};
+
+        // 효과음 생성기 (Web Audio API 활용, 외부파일 없이 동작)
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+        }
+
+        // 효과음: 점수 변경 / 클릭 소리
+        function playSound(freq, duration = 0.08) {
+            try {
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        // 초기 시작 세팅
+        function initApp() {
+            document.getElementById('app-title').innerText = CONFIG.TITLE_TEXT;
+            document.getElementById('app-subtitle').innerText = CONFIG.SUBTITLE_TEXT;
+            document.getElementById('total-quiz-count').innerText = CONFIG.QUIZ_LIST.length;
+
+            // 모둠 점수 초기화
+            CONFIG.TEAMS.forEach(team => {
+                teamScores[team.id] = 0;
+            });
+
+            renderScoreboard();
+            renderQuiz();
+        }
+
+        // 퀴즈 화면 렌더링
+        function renderQuiz() {
+            if (CONFIG.QUIZ_LIST.length === 0) return;
+
+            const quiz = CONFIG.QUIZ_LIST[currentQuizIndex];
+            document.getElementById('quiz-question').innerText = quiz.question;
+            document.getElementById('quiz-answer').innerText = quiz.answer;
+            document.getElementById('current-quiz-index').innerText = currentQuizIndex + 1;
+
+            // 정답 박스는 숨김 상태로 시작
+            isAnswerVisible = false;
+            const answerBox = document.getElementById('answer-box');
+            const toggleBtn = document.getElementById('btn-toggle-answer');
+            
+            answerBox.classList.add('hidden');
+            toggleBtn.innerHTML = "👁️ 정답 보기";
+            toggleBtn.className = "bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-lg sm:text-2xl md:text-3xl py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition active:scale-95 border-b-4 border-amber-700 flex items-center justify-center gap-1 sm:gap-2";
+        }
+
+        // 정답 보기 / 숨기기 토글
+        function toggleAnswer() {
+            initAudio();
+            isAnswerVisible = !isAnswerVisible;
+
+            const answerBox = document.getElementById('answer-box');
+            const toggleBtn = document.getElementById('btn-toggle-answer');
+
+            if (isAnswerVisible) {
+                answerBox.classList.remove('hidden');
+                toggleBtn.innerHTML = "🙈 정답 가리기";
+                toggleBtn.className = "bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-lg sm:text-2xl md:text-3xl py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition active:scale-95 border-b-4 border-emerald-800 flex items-center justify-center gap-1 sm:gap-2";
+                
+                playSound(587.33); // D5
+                triggerConfetti(); // 축하 폭죽 효과
+            } else {
+                answerBox.classList.add('hidden');
+                toggleBtn.innerHTML = "👁️ 정답 보기";
+                toggleBtn.className = "bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-lg sm:text-2xl md:text-3xl py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition active:scale-95 border-b-4 border-amber-700 flex items-center justify-center gap-1 sm:gap-2";
+                playSound(349.23); // F4
+            }
+        }
+
+        // 다음 문제
+        function nextQuiz() {
+            initAudio();
+            playSound(440);
+            if (CONFIG.QUIZ_LIST.length === 0) return;
+            currentQuizIndex = (currentQuizIndex + 1) % CONFIG.QUIZ_LIST.length;
+            renderQuiz();
+        }
+
+        // 이전 문제
+        function prevQuiz() {
+            initAudio();
+            playSound(392);
+            if (CONFIG.QUIZ_LIST.length === 0) return;
+            currentQuizIndex = (currentQuizIndex - 1 + CONFIG.QUIZ_LIST.length) % CONFIG.QUIZ_LIST.length;
+            renderQuiz();
+        }
+
+        // 모둠 점수판 렌더링
+        function renderScoreboard() {
+            const container = document.getElementById('team-scoreboard');
+            container.innerHTML = '';
+
+            CONFIG.TEAMS.forEach(team => {
+                const score = teamScores[team.id] || 0;
+                
+                const card = document.createElement('div');
+                card.className = "bg-slate-800 border-2 border-slate-700 rounded-2xl p-2 sm:p-3 flex flex-col items-center justify-between shadow-lg";
+                
+                card.innerHTML = `
+                    <div class="text-sm sm:text-base md:text-lg font-extrabold text-amber-400 mb-1">
+                        ${team.name}
+                    </div>
+                    <div id="score-val-${team.id}" class="text-3xl sm:text-4xl md:text-5xl font-black text-white my-1 tracking-tight">
+                        ${score}
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5 w-full mt-1">
+                        <button onclick="changeScore(${team.id}, -${CONFIG.SCORE_STEP})" 
+                            class="bg-slate-700 hover:bg-rose-800 active:bg-rose-900 text-rose-300 font-extrabold text-base sm:text-xl py-2 rounded-xl transition border border-slate-600 active:scale-90 flex items-center justify-center">
+                            -${CONFIG.SCORE_STEP}
+                        </button>
+                        <button onclick="changeScore(${team.id}, ${CONFIG.SCORE_STEP})" 
+                            class="bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-base sm:text-xl py-2 rounded-xl transition border border-amber-600 active:scale-90 flex items-center justify-center">
+                            +${CONFIG.SCORE_STEP}
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 점수 변경 함수
+        function changeScore(teamId, delta) {
+            initAudio();
+            if (delta > 0) {
+                playSound(659.25); // 점수 획득 시 쾌청한 높은 음 (E5)
+            } else {
+                playSound(261.63); // 감점 시 낮은 음 (C4)
+            }
+
+            teamScores[teamId] = (teamScores[teamId] || 0) + delta;
+            
+            // 해당 모둠 점수 텍스트만 애니메이션과 함께 업데이트
+            const scoreEl = document.getElementById(`score-val-${teamId}`);
+            if (scoreEl) {
+                scoreEl.innerText = teamScores[teamId];
+                scoreEl.classList.remove('animate-score');
+                void scoreEl.offsetWidth; // 리플로우 강제
+                scoreEl.classList.add('animate-score');
+            }
+        }
+
+        // 전체 점수 리셋
+        function resetScores() {
+            initAudio();
+            playSound(300);
+            CONFIG.TEAMS.forEach(team => {
+                teamScores[team.id] = 0;
+            });
+            renderScoreboard();
+        }
+
+        // 폭죽 효과 (canvas-confetti)
+        function triggerConfetti() {
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 50,
+                    spread: 60,
+                    origin: { y: 0.5 }
+                });
+            }
+        }
+
+        // 키보드 방향키 조작 지원 (좌/우: 이전/다음 문제, 스페이스바/위/아래: 정답 토글)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') {
+                nextQuiz();
+            } else if (e.key === 'ArrowLeft') {
+                prevQuiz();
+            } else if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                toggleAnswer();
+            }
+        });
+
+        // 페이지 로드 완료 시 초기 실행
+        window.onload = function() {
+            initApp();
+        };
+    </script>
+</body>
+</html>
